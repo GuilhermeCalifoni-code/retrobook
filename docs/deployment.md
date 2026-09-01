@@ -57,7 +57,7 @@ e voce controlar os dois.
 
 ## 2. Codigo
 
-Repositorio: `guilhermecalifoni-IAops/retrobook` (privado).
+Repositorio: `GuilhermeCalifoni-code/retrobook` (privado).
 
 ```text
 retrobook/
