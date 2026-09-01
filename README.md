@@ -52,14 +52,23 @@ Todas as contas semeadas usam a mesma senha. A tela de login tem um atalho que p
 | `npm run dev` | Sobe API e Web juntos, sem preparar o banco |
 | `npm run db:up` / `db:down` | Liga/desliga o PostgreSQL |
 | `npm run db:push` | Aplica o schema Prisma no banco |
-| `npm run db:seed` | Repopula os dados de demonstração |
+| `npm run db:seed` | Repopula os dados de demonstração (**apaga a base antes**) |
+| `npm run db:migrate --workspace @retrobook/api` | Aplica as migrations (o caminho de produção) |
+| `npm run db:seed:prod --workspace @retrobook/api` | Semeia só o catálogo, sem apagar nada |
 | `npm run build` | Build de produção dos dois apps |
 | `npm run typecheck` | Verificação de tipos ponta a ponta |
 | `npm run smoke --workspace @retrobook/api` | Percorre a jornada completa contra a API rodando |
 | `npx tsx scripts/smoke-evolution.ts` | Testa recomendações, spoilers, universo e métricas |
 | `npx tsx scripts/smoke-communities.ts` | Testa pulso, feed, membros e os 5 papéis de permissão |
+| `npm run smoke:prod --workspace @retrobook/api` | Jornada de produção a partir de uma base vazia |
 
-São três testes de fumaça manuais, rodados contra a API no ar. O `smoke` percorre a jornada principal (57 verificações); o `smoke-evolution` cobre o que a evolução trouxe — motor de recomendação, sinais da Home, Seu Universo, presença por livro, compatibilidade 2.0, spoilers por capítulo, atualização de leitura e métricas (30 verificações); o `smoke-communities` cobre o pulso, filtros, busca de membros e as permissões dos cinco papéis — visitante, membro, moderador, admin e dono, incluindo tentativas de escalada de privilégio (40 verificações). Cada um checa **comportamento**, não status HTTP.
+São quatro testes de fumaça manuais, rodados contra a API no ar. O `smoke` percorre a jornada principal (57 verificações); o `smoke-evolution` cobre o que a evolução trouxe — motor de recomendação, sinais da Home, Seu Universo, presença por livro, compatibilidade 2.0, spoilers por capítulo, atualização de leitura e métricas (30 verificações); o `smoke-communities` cobre o pulso, filtros, busca de membros e as permissões dos cinco papéis — visitante, membro, moderador, admin e dono, incluindo tentativas de escalada de privilégio (40 verificações). Cada um checa **comportamento**, não status HTTP.
+
+O quarto, `smoke:prod`, é diferente dos outros três: ele não depende do seed de demonstração. Parte de uma base que só tem catálogo e percorre o caminho de quem chega primeiro — cadastro, onboarding, estante, comunidade, limite do plano, discussão, permissões, spoiler com escopo, sessão e erros (52 verificações). Por isso é o único que pode ser apontado para a URL pública:
+
+```bash
+RETROBOOK_API=https://sua-api.exemplo.com/api npm run smoke:prod --workspace @retrobook/api
+```
 
 > **Se o Docker não subir:** não faz diferença para o `npm start` — ele detecta em poucos segundos e usa o PostgreSQL embutido. Só o `npm run setup` depende do Docker Desktop estar completamente iniciado.
 
@@ -180,6 +189,24 @@ O modo estrutural vem de `useLayoutMode()`. No mobile a sidebar vira navegação
 Em telas grandes, o seletor no topo (ou em *Configurações › Aparência*) troca entre **Automático, Tablet e Mobile**. O app aparece dentro de um mockup de aparelho e **muda de estrutura**, não de escala.
 
 A implementação importa aqui: o preview roda o app num `iframe` com a largura real do aparelho (390 ou 834px), em vez de tentar enganar as media queries. Assim `sm:`/`lg:` e tudo mais se comportam exatamente como num celular — a primeira versão escalava o container e os grids continuavam respondendo à janela de 1280px, o que espremia os cards. Como o iframe é de mesma origem, a sessão continua valendo, e o aparelho encolhe proporcionalmente quando a janela é pequena.
+
+---
+
+## Deploy
+
+O RetroBook é um monorepo com duas metades que vão para lugares diferentes:
+
+```text
+navegador -> Vercel (site estático) -> Render (API, processo longo) -> PostgreSQL
+```
+
+A API **não** vai para função serverless. Ela mantém pool de conexões do Prisma e rate limit em memória: em serverless, cada invocação fria abriria um pool novo e o rate limit contaria por instância, virando decoração. O site, ao contrário, é estático — exatamente o que uma CDN faz melhor.
+
+O site chama `/api` na mesma origem, encaminhado por rewrite. Não é detalhe de conveniência: a sessão vive em cookie `httpOnly`, e cookie same-origin dispensa `SameSite=None` — que exige HTTPS e quebra em navegadores que bloqueiam cookie de terceiros. `VITE_API_URL` existe para quando a API tiver domínio próprio.
+
+Produção usa `prisma migrate deploy`, nunca `db push`. O seed de produção é um script separado que nunca apaga nada e não cria uma única pessoa falsa.
+
+**O passo a passo completo — variáveis, migrations, rollback, backup e diagnóstico — está em [docs/deployment.md](docs/deployment.md).**
 
 ---
 
