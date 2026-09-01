@@ -1,0 +1,24 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+*.log
+.DS_Store
+apps/api/prisma/migrations/dev.db*
+.vite/
+coverage/
+
+# banco embutido de desenvolvimento
+apps/api/.pgdata/
+
+# --- segredos: nada abaixo pode ser versionado ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+.vercel/
