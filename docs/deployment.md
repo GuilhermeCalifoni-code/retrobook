@@ -329,3 +329,34 @@ Os limites e a politica de cada plano mudam com frequencia — confira no
 painel de cada provedor antes de depender deles. Dois pontos que costumam
 pegar de surpresa em planos gratuitos de Postgres: expiracao apos um
 periodo, e ausencia de backup automatico.
+
+---
+
+## 13. Dependencias
+
+`npm audit --omit=dev` reporta 3 avisos de gravidade alta, todos o mesmo
+problema: `deepmerge-ts` < 8.0.0 sofre estouro de pilha ao mesclar grafos de
+objeto recursivos (GHSA-ggr8-5vv4-36mx).
+
+O caminho ate ele e unico:
+
+```text
+prisma (CLI, devDependency)  ->  @prisma/config  ->  deepmerge-ts
+```
+
+`@prisma/client` — o que realmente roda no processo que atende requisicao —
+**nao** alcanca esse pacote. Verificado percorrendo a arvore de dependencias,
+nao presumido.
+
+Na pratica isso significa que o codigo vulneravel so e carregado pela CLI, ao
+ler o proprio arquivo de configuracao do projeto, durante build e
+`migrate deploy`. Ele nunca ve dado de usuario. Para explorar a falha seria
+preciso controlar a configuracao do Prisma — ou seja, ja ter acesso de
+escrita ao repositorio.
+
+A correcao existe apenas em `deepmerge-ts` 8.0.0, e nao ha versao do Prisma
+6.x que ja a adote. Forcar o salto major via `overrides` trocaria um risco
+teorico, sem superficie de ataque, pelo risco concreto de quebrar a
+ferramenta que aplica as migrations. Por isso **nao foi forcado**.
+
+Revisar quando o Prisma publicar uma versao que adote a 8.x.
