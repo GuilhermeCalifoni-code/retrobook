@@ -1,0 +1,46 @@
+# Blueprint do Render — provisiona a API e o PostgreSQL de uma vez.
+#
+# A API do RetroBook e um servico HTTP persistente com pool de conexoes do
+# Prisma e rate limit em memoria. Isso NAO cabe bem em funcao serverless: cada
+# invocacao fria abriria um pool novo (esgotando as conexoes do Postgres) e o
+# rate limit contaria por instancia, virando decoracao. Por isso a API fica em
+# um servico de processo longo, e so o frontend estatico vai para a Vercel.
+services:
+  - type: web
+    name: retrobook-api
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: .
+    buildCommand: npm install && npm run build --workspace @retrobook/api
+    # `migrate deploy` roda a cada start: e idempotente e garante que o schema
+    # do banco nunca fique atras do codigo que acabou de subir.
+    startCommand: npm run start --workspace @retrobook/api
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: retrobook-db
+          property: connectionString
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      # Preencher com a URL publica da Vercel apos o primeiro deploy do site.
+      - key: WEB_ORIGIN
+        sync: false
+      # `none` porque site e API ficam em dominios diferentes. Ver docs/deployment.md.
+      - key: COOKIE_SAMESITE
+        value: none
+      - key: BOOK_PROVIDER
+        value: local
+
+databases:
+  - name: retrobook-db
+    plan: free
+    region: oregon
+    postgresMajorVersion: "16"
