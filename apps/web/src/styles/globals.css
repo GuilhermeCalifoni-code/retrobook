@@ -1,0 +1,213 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   RetroBook — Design tokens
+   Uma biblioteca moderna onde as pessoas se encontram.
+   Tema claro: papel creme, tinta quente, vinho e ouro velho.
+   Tema escuro: biblioteca a noite — nao e inversao, e outra hora do dia.
+   ========================================================================== */
+
+@layer base {
+  :root {
+    /* Cor (RGB cru para permitir opacidade via Tailwind) */
+    --rb-canvas: 250 248 243;
+    --rb-surface: 255 254 251;
+    --rb-raised: 247 241 229;
+    --rb-line: 226 219 205;
+    --rb-ink: 33 31 28;
+    --rb-muted: 111 106 98;
+    --rb-subtle: 150 144 133;
+    --rb-burgundy: 123 46 58;
+    --rb-burgundy-soft: 168 92 103;
+    --rb-burgundy-deep: 88 30 40;
+    --rb-gold: 176 130 42; /* escurecido em relacao ao #C89B3C para passar em AA sobre creme */
+    --rb-gold-soft: 200 155 60;
+    --rb-success: 46 105 74;
+    --rb-danger: 168 55 53;
+    --rb-info: 74 92 122;
+
+    /* Tinta clara fixa: usada sobre cores de marca (accent de comunidade),
+       que sao sempre escuras e nao devem inverter no tema escuro. */
+    --rb-on-brand: 247 241 229;
+    /* Tinta escura sobre dourado: com creme o contraste era 3.26:1 (reprovado). */
+    --rb-on-gold: 33 31 28;
+    /* Fundo de acao primaria — separado do burgundy de texto. */
+    --rb-action: 123 46 58;
+    /* Moldura do aparelho no Mobile Preview. */
+    --rb-device: 26 24 22;
+
+    /* Espacamento e ritmo */
+    --rb-radius: 1rem;
+    --rb-header-h: 4rem;
+    --rb-bottom-nav-h: 4.25rem;
+
+    color-scheme: light;
+  }
+
+  .dark {
+    --rb-canvas: 20 18 16;
+    --rb-surface: 28 25 23;
+    --rb-raised: 38 34 31;
+    --rb-line: 59 53 48;
+    --rb-ink: 241 236 226;
+    --rb-muted: 168 160 148;
+    --rb-subtle: 132 124 113;
+    --rb-burgundy: 178 92 104;
+    --rb-burgundy-soft: 206 133 143;
+    --rb-burgundy-deep: 129 55 66;
+    --rb-gold: 216 174 88;
+    --rb-gold-soft: 232 199 132;
+    --rb-success: 108 178 140;
+    --rb-danger: 226 116 113;
+    --rb-info: 138 158 194;
+    --rb-on-brand: 247 241 229;
+    --rb-on-gold: 33 31 28;
+    /* Mais escuro que o burgundy de texto: garante 6.6:1 com a tinta creme. */
+    --rb-action: 140 58 70;
+    --rb-device: 12 11 10;
+
+    color-scheme: dark;
+  }
+
+  * {
+    border-color: rgb(var(--rb-line));
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  body {
+    @apply bg-canvas font-sans text-ink antialiased;
+    /* Nenhuma tela deve rolar na horizontal: as listas horizontais rolam
+       dentro do proprio container (.rb-scroll-x), nunca a pagina inteira. */
+    overflow-x: hidden;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-display;
+    letter-spacing: -0.015em;
+  }
+
+  /* Foco visivel e consistente em todo o produto (acessibilidade, secao 36). */
+  :focus-visible {
+    outline: 2px solid rgb(var(--rb-burgundy));
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  .dark :focus-visible {
+    outline-color: rgb(var(--rb-gold));
+  }
+
+  ::selection {
+    background: rgb(var(--rb-gold) / 0.28);
+  }
+
+  /* Barra de rolagem discreta, no tom do papel. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--rb-line));
+    border-radius: 999px;
+    border: 3px solid rgb(var(--rb-canvas));
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--rb-subtle));
+  }
+}
+
+@layer components {
+  /* Textura de papel: ruido sutil que evita o "branco de app de banco". */
+  .rb-paper {
+    background-image:
+      radial-gradient(circle at 15% 10%, rgb(var(--rb-gold) / 0.05), transparent 42%),
+      radial-gradient(circle at 85% 0%, rgb(var(--rb-burgundy) / 0.05), transparent 40%);
+  }
+
+  /* Filete duplo de ficha catalografica. */
+  .rb-rule {
+    border-top: 1px solid rgb(var(--rb-line));
+    box-shadow: 0 3px 0 -2px rgb(var(--rb-line));
+  }
+
+  .rb-skeleton {
+    @apply rounded-control;
+    background: linear-gradient(
+      90deg,
+      rgb(var(--rb-line) / 0.35) 25%,
+      rgb(var(--rb-line) / 0.6) 37%,
+      rgb(var(--rb-line) / 0.35) 63%
+    );
+    background-size: 200% 100%;
+    @apply animate-shimmer;
+  }
+
+  /* Conteudo escondido atras do aviso de spoiler. */
+  .rb-spoiler-veil {
+    filter: blur(7px);
+    user-select: none;
+    pointer-events: none;
+  }
+
+  .rb-scroll-x {
+    overflow-x: auto;
+    scrollbar-width: thin;
+    scroll-snap-type: x proximate;
+    -webkit-overflow-scrolling: touch;
+  }
+  .rb-scroll-x > * {
+    scroll-snap-align: start;
+  }
+
+  /* Area de toque minima de 44px no mobile sem inflar o layout visual. */
+  .rb-tap::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+  }
+}
+
+@layer utilities {
+  .rb-safe-bottom {
+    padding-bottom: max(env(safe-area-inset-bottom), 0px);
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .text-pretty {
+    text-wrap: pretty;
+  }
+
+  /* Usado pelo Mobile Preview: o container vira o "viewport" das media queries
+     dos nossos componentes que dependem de largura de container. */
+  .rb-device-scope {
+    container-type: inline-size;
+  }
+}

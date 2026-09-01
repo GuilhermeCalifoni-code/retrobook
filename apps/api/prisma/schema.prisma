@@ -1,0 +1,901 @@
+// RetroBook — modelo de dados
+// Principio central: o livro nao e um objeto isolado, e a aresta que conecta pessoas.
+// Por isso quase toda entidade social (Post, Community, Review, Message) pode referenciar um Book.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum ReadingStatus {
+  WANT_TO_READ
+  READING
+  PAUSED
+  ABANDONED
+  READ
+}
+
+enum CommunityPrivacy {
+  PUBLIC // qualquer pessoa entra
+  PRIVATE // precisa solicitar ou receber convite
+  EXCLUSIVE // entrada apenas por aprovacao do owner/admin
+}
+
+enum CommunityRole {
+  OWNER
+  ADMIN
+  MODERATOR
+  MEMBER
+}
+
+enum MembershipStatus {
+  ACTIVE
+  PENDING
+  BANNED
+  MUTED
+}
+
+enum PostType {
+  DISCUSSION
+  THEORY
+  REVIEW
+  QUESTION
+  QUOTE
+  /// Indicacao de leitura para a comunidade.
+  RECOMMENDATION
+  /// "Cheguei ao capitulo 8" — progresso compartilhado, gerado a partir da biblioteca.
+  READING_UPDATE
+}
+
+/// Ate onde o spoiler alcanca. Estruturado (e nao texto livre) para que o
+/// sistema possa comparar com o progresso de quem le e decidir sozinho.
+enum SpoilerScopeType {
+  GENERAL // sem referencia precisa: esconde de quem nao terminou
+  CHAPTER
+  PAGE
+  PART
+  ENDING // so libera para quem terminou o livro
+}
+
+enum ReactionType {
+  LIKE
+  INSIGHTFUL
+  LOVE
+}
+
+enum NotificationType {
+  FOLLOW
+  COMMENT
+  REPLY
+  REACTION
+  COMMUNITY_POST
+  COMMUNITY_JOIN_REQUEST
+  COMMUNITY_JOIN_APPROVED
+  BOOK_MATCH
+  COMMUNITY_MATCH
+  ACHIEVEMENT
+  MESSAGE
+  SYSTEM
+}
+
+enum PlanTier {
+  FREE
+  PRO
+  BUSINESS
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  TRIALING
+}
+
+enum ReportTargetType {
+  POST
+  COMMENT
+  USER
+  COMMUNITY
+  MESSAGE
+}
+
+enum ReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+enum ProfileVisibility {
+  PUBLIC
+  PRIVATE
+}
+
+enum ThemePreference {
+  LIGHT
+  DARK
+  SYSTEM
+}
+
+enum SpoilerPreference {
+  ALWAYS_HIDE // esconde todo spoiler
+  HIDE_UNREAD // esconde apenas de livros que ainda nao terminei
+  ALWAYS_SHOW
+}
+
+enum ReadingGoalIntent {
+  DISCOVER_BOOKS
+  MEET_PEOPLE
+  JOIN_COMMUNITIES
+  DISCUSS_BOOKS
+  TRACK_READING
+  EVERYTHING
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+// ---------------------------------------------------------------------------
+// Identidade e conta
+// ---------------------------------------------------------------------------
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  passwordHash    String?
+  emailVerifiedAt DateTime?
+  isAdmin         Boolean   @default(false)
+  lastSeenAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  profile      Profile?
+  subscription Subscription?
+  sessions     Session[]
+  authTokens   AuthToken[]
+  socialLinks  SocialAccount[]
+
+  books     UserBook[]
+  progress  ReadingProgress[]
+  reviews   Review[]
+  interests UserGenre[]
+
+  ownedCommunities    Community[]           @relation("CommunityOwner")
+  memberships         CommunityMember[]
+  invitationsSent     CommunityInvitation[] @relation("InvitationInviter")
+  invitationsReceived CommunityInvitation[] @relation("InvitationInvitee")
+
+  posts        Post[]
+  comments     Comment[]
+  reactions    Reaction[]
+  savedPosts   SavedPost[]
+  removedPosts Post[]      @relation("PostRemovedBy")
+
+  following Follow[] @relation("Follower")
+  followers Follow[] @relation("Following")
+
+  notifications      Notification[] @relation("NotificationRecipient")
+  actedNotifications Notification[] @relation("NotificationActor")
+
+  conversations ConversationParticipant[]
+  messages      Message[]
+
+  blocksMade     Block[] @relation("Blocker")
+  blocksReceived Block[] @relation("Blocked")
+
+  achievements   UserAchievement[]
+  events         ProductEvent[]
+  reportsMade    Report[]          @relation("Reporter")
+  reportsHandled Report[]          @relation("ReportHandler")
+
+  @@index([createdAt])
+}
+
+model Profile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name      String
+  username  String  @unique
+  bio       String? @db.VarChar(280)
+  avatarUrl String?
+  coverUrl  String?
+  location  String?
+  website   String?
+  pronouns  String?
+
+  goal                ReadingGoalIntent @default(EVERYTHING)
+  onboardingStep      Int               @default(0)
+  onboardingCompleted Boolean           @default(false)
+
+  // Privacidade (secao 50)
+  visibility           ProfileVisibility @default(PUBLIC)
+  showLibrary          Boolean           @default(true)
+  showCurrentlyReading Boolean           @default(true)
+  showActivity         Boolean           @default(true)
+  showCommunities      Boolean           @default(true)
+  allowMessages        Boolean           @default(true)
+
+  // Aparencia e leitura
+  theme             ThemePreference   @default(SYSTEM)
+  spoilerPreference SpoilerPreference @default(HIDE_UNREAD)
+
+  // Notificacoes
+  notifyComments        Boolean @default(true)
+  notifyFollowers       Boolean @default(true)
+  notifyCommunities     Boolean @default(true)
+  notifyRecommendations Boolean @default(true)
+  notifyMessages        Boolean @default(true)
+
+  followersCount Int @default(0)
+  followingCount Int @default(0)
+  booksReadCount Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([username])
+}
+
+model Session {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  userAgent String?
+  ip        String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+/// Tokens de verificacao de e-mail e recuperacao de senha (uso unico, com expiracao).
+model AuthToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose   String // EMAIL_VERIFICATION | PASSWORD_RESET
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, purpose])
+}
+
+/// Preparado para login social (Google/Apple) sem acoplar o MVP a um provedor.
+model SocialAccount {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider       String
+  providerUserId String
+  createdAt      DateTime @default(now())
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Catalogo literario
+// ---------------------------------------------------------------------------
+
+model Book {
+  id String @id @default(cuid())
+
+  slug String @unique
+
+  /// id no provedor externo (google books, openlibrary...). Permite trocar de provedor.
+  externalId    String?
+  provider      String  @default("local")
+  title         String
+  subtitle      String?
+  description   String?
+  coverUrl      String?
+  pageCount     Int?
+  publishedYear Int?
+  publisher     String?
+  language      String  @default("pt-BR")
+  isbn13        String?
+  isbn10        String?
+
+  // Contadores desnormalizados para feeds rapidos
+  ratingsAvg   Float @default(0)
+  ratingsCount Int   @default(0)
+  readersCount Int   @default(0)
+  readingCount Int   @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  authors     BookAuthor[]
+  genres      BookGenre[]
+  userBooks   UserBook[]
+  reviews     Review[]
+  posts       Post[]
+  communities CommunityBook[]
+  messages    Message[]
+  progress    ReadingProgress[]
+
+  @@unique([provider, externalId])
+  @@index([title])
+  @@index([readersCount])
+}
+
+model Author {
+  id       String       @id @default(cuid())
+  slug     String       @unique
+  name     String
+  bio      String?
+  photoUrl String?
+  books    BookAuthor[]
+
+  @@index([name])
+}
+
+model BookAuthor {
+  bookId   String
+  authorId String
+  order    Int    @default(0)
+  book     Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  author   Author @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@id([bookId, authorId])
+  @@index([authorId])
+}
+
+model Genre {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  name        String
+  description String?
+
+  /// genero criado pelo proprio usuario no onboarding (opcao "adicionar outro")
+  isCustom Boolean @default(false)
+
+  books       BookGenre[]
+  users       UserGenre[]
+  communities Community[]
+}
+
+model BookGenre {
+  bookId  String
+  genreId String
+  book    Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  genre   Genre  @relation(fields: [genreId], references: [id], onDelete: Cascade)
+
+  @@id([bookId, genreId])
+  @@index([genreId])
+}
+
+/// Interesses declarados no onboarding. `weight` permite evoluir para recomendacao aprendida.
+model UserGenre {
+  userId  String
+  genreId String
+  weight  Float  @default(1)
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  genre   Genre  @relation(fields: [genreId], references: [id], onDelete: Cascade)
+
+  @@id([userId, genreId])
+  @@index([genreId])
+}
+
+// ---------------------------------------------------------------------------
+// Biblioteca pessoal
+// ---------------------------------------------------------------------------
+
+model UserBook {
+  id     String @id @default(cuid())
+  userId String
+  bookId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  status      ReadingStatus @default(WANT_TO_READ)
+  rating      Int? // 1..5
+  isFavorite  Boolean       @default(false)
+  currentPage    Int           @default(0)
+  currentChapter Int?
+  progress       Int           @default(0) // 0..100
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  lastReadAt  DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  entries ReadingProgress[]
+
+  @@unique([userId, bookId])
+  @@index([userId, status])
+  @@index([bookId, status])
+}
+
+model ReadingProgress {
+  id         String   @id @default(cuid())
+  userBookId String
+  userBook   UserBook @relation(fields: [userBookId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId     String
+  book       Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  page       Int
+  percent    Int
+  pagesDelta Int      @default(0)
+  note       String?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userBookId])
+}
+
+model Review {
+  id              String   @id @default(cuid())
+  userId          String
+  bookId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book            Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  rating          Int
+  title           String?
+  content         String
+  containsSpoiler Boolean  @default(false)
+  likesCount      Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([userId, bookId])
+  @@index([bookId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Comunidades
+// ---------------------------------------------------------------------------
+
+model Community {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  name        String
+  tagline     String?
+  description String
+  avatarUrl   String?
+  coverUrl    String?
+  accentColor String?
+
+  privacy    CommunityPrivacy @default(PUBLIC)
+  genreId    String?
+  genre      Genre?           @relation(fields: [genreId], references: [id])
+  isFeatured Boolean          @default(false)
+  isArchived Boolean          @default(false)
+
+  /// Regras de entrada configuraveis (etapa 8 do wizard)
+  requireApproval     Boolean @default(false)
+  allowMemberPosts    Boolean @default(true)
+  requirePostApproval Boolean @default(false)
+
+  membersCount Int @default(0)
+  postsCount   Int @default(0)
+
+  ownerId String
+  owner   User   @relation("CommunityOwner", fields: [ownerId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members     CommunityMember[]
+  rules       CommunityRule[]
+  posts       Post[]
+  books       CommunityBook[]
+  tags        CommunityTag[]
+  invitations CommunityInvitation[]
+  messages    Message[]
+
+  @@index([privacy, membersCount])
+  @@index([genreId])
+}
+
+/// O papel do moderador vive aqui (role): uma unica tabela de vinculo evita
+/// estados divergentes entre "membro" e "moderador".
+model CommunityMember {
+  id          String           @id @default(cuid())
+  communityId String
+  userId      String
+  community   Community        @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        CommunityRole    @default(MEMBER)
+  status      MembershipStatus @default(ACTIVE)
+  mutedUntil  DateTime?
+  joinedAt    DateTime         @default(now())
+
+  @@unique([communityId, userId])
+  @@index([userId, status])
+  @@index([communityId, role])
+}
+
+model CommunityRule {
+  id          String    @id @default(cuid())
+  communityId String
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  order       Int       @default(0)
+  title       String
+  description String?
+
+  @@index([communityId, order])
+}
+
+model CommunityBook {
+  communityId String
+  bookId      String
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  book        Book      @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  addedAt     DateTime  @default(now())
+
+  @@id([communityId, bookId])
+  @@index([bookId])
+}
+
+model CommunityInvitation {
+  id          String           @id @default(cuid())
+  communityId String
+  community   Community        @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  inviterId   String
+  inviter     User             @relation("InvitationInviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  inviteeId   String?
+  invitee     User?            @relation("InvitationInvitee", fields: [inviteeId], references: [id], onDelete: SetNull)
+  email       String?
+  token       String           @unique
+  status      InvitationStatus @default(PENDING)
+  expiresAt   DateTime
+  createdAt   DateTime         @default(now())
+
+  @@index([communityId, status])
+  @@index([inviteeId, status])
+}
+
+// ---------------------------------------------------------------------------
+// Conteudo social
+// ---------------------------------------------------------------------------
+
+model Post {
+  id       String @id @default(cuid())
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  /// Post sem comunidade e uma discussao aberta de livro (o BookDiscussion do dominio).
+  communityId String?
+  community   Community? @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  bookId      String?
+  book        Book?      @relation(fields: [bookId], references: [id], onDelete: SetNull)
+
+  type            PostType @default(DISCUSSION)
+  title           String?
+  content         String
+  containsSpoiler Boolean  @default(false)
+
+  /// Texto exibido ("Ate o capitulo 12"), derivado dos campos abaixo.
+  spoilerScope String?
+
+  /// Alcance estruturado: e o que permite liberar o spoiler automaticamente
+  /// para quem ja passou daquele ponto, em vez de esconder de todo mundo.
+  spoilerScopeType  SpoilerScopeType?
+  spoilerScopeValue Int?
+
+  /// Trecho citado (PostType.QUOTE). Tamanho limitado na camada de servico (politica de citacao).
+  quoteText String?
+  quotePage Int?
+
+  /// Preenchidos em READING_UPDATE: o ponto da leitura no momento do post.
+  progressPage    Int?
+  progressPercent Int?
+  progressChapter Int?
+
+  isPinned      Boolean @default(false)
+  isLocked      Boolean @default(false)
+  isRemoved     Boolean @default(false)
+  removedById   String?
+  removedBy     User?   @relation("PostRemovedBy", fields: [removedById], references: [id], onDelete: SetNull)
+  removedReason String?
+
+  likesCount    Int @default(0)
+  commentsCount Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  comments  Comment[]
+  reactions Reaction[]
+  saves     SavedPost[]
+  tags      PostTag[]
+
+  @@index([communityId, createdAt])
+  @@index([bookId, createdAt])
+  @@index([authorId, createdAt])
+  @@index([createdAt])
+}
+
+model Comment {
+  id       String    @id @default(cuid())
+  postId   String
+  post     Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId String
+  author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parentId String?
+  parent   Comment?  @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  Comment[] @relation("CommentThread")
+
+  content         String
+  containsSpoiler Boolean @default(false)
+  likesCount      Int     @default(0)
+  isRemoved       Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reactions Reaction[]
+
+  @@index([postId, createdAt])
+  @@index([parentId])
+}
+
+model Reaction {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postId    String?
+  post      Post?        @relation(fields: [postId], references: [id], onDelete: Cascade)
+  commentId String?
+  comment   Comment?     @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  type      ReactionType @default(LIKE)
+  createdAt DateTime     @default(now())
+
+  @@unique([userId, postId])
+  @@unique([userId, commentId])
+  @@index([postId])
+  @@index([commentId])
+}
+
+model SavedPost {
+  userId    String
+  postId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([userId, postId])
+  @@index([postId])
+}
+
+model Tag {
+  id         String @id @default(cuid())
+  slug       String @unique
+  name       String
+  usageCount Int    @default(0)
+
+  posts       PostTag[]
+  communities CommunityTag[]
+}
+
+model PostTag {
+  postId String
+  tagId  String
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([postId, tagId])
+  @@index([tagId])
+}
+
+model CommunityTag {
+  communityId String
+  tagId       String
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  tag         Tag       @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([communityId, tagId])
+  @@index([tagId])
+}
+
+model Follow {
+  followerId  String
+  followingId String
+  follower    User     @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@id([followerId, followingId])
+  @@index([followingId])
+}
+
+model Block {
+  blockerId String
+  blockedId String
+  blocker   User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@id([blockerId, blockedId])
+  @@index([blockedId])
+}
+
+// ---------------------------------------------------------------------------
+// Notificacoes e mensagens
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id      String           @id @default(cuid())
+  userId  String
+  user    User             @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  actorId String?
+  actor   User?            @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  type    NotificationType
+  title   String
+  body    String?
+
+  /// Deep link interno usado pelo app web e, futuramente, pelo app nativo.
+  href       String?
+  entityType String?
+  entityId   String?
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId, readAt, createdAt])
+}
+
+model Conversation {
+  id            String   @id @default(cuid())
+  lastMessageAt DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@index([lastMessageAt])
+}
+
+model ConversationParticipant {
+  conversationId String
+  userId         String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadAt     DateTime?
+  isArchived     Boolean      @default(false)
+
+  @@id([conversationId, userId])
+  @@index([userId])
+}
+
+model Message {
+  id                String       @id @default(cuid())
+  conversationId    String
+  conversation      Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId          String
+  sender            User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  body              String?
+  sharedBookId      String?
+  sharedBook        Book?        @relation(fields: [sharedBookId], references: [id], onDelete: SetNull)
+  sharedCommunityId String?
+  sharedCommunity   Community?   @relation(fields: [sharedCommunityId], references: [id], onDelete: SetNull)
+  createdAt         DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Gamificacao, moderacao e planos
+// ---------------------------------------------------------------------------
+
+model Achievement {
+  id          String @id @default(cuid())
+  code        String @unique
+  name        String
+  description String
+  icon        String
+  category    String @default("reading")
+  threshold   Int    @default(1)
+
+  users UserAchievement[]
+}
+
+model UserAchievement {
+  userId        String
+  achievementId String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  unlockedAt    DateTime    @default(now())
+
+  @@id([userId, achievementId])
+  @@index([achievementId])
+}
+
+model Report {
+  id          String           @id @default(cuid())
+  reporterId  String
+  reporter    User             @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  targetType  ReportTargetType
+  targetId    String
+  reason      String
+  details     String?
+  status      ReportStatus     @default(OPEN)
+  handledById String?
+  handledBy   User?            @relation("ReportHandler", fields: [handledById], references: [id], onDelete: SetNull)
+  createdAt   DateTime         @default(now())
+
+  @@index([status, createdAt])
+  @@index([targetType, targetId])
+}
+
+model Plan {
+  id         String   @id @default(cuid())
+  tier       PlanTier @unique
+  name       String
+  tagline    String
+  priceCents Int      @default(0)
+  currency   String   @default("BRL")
+
+  maxCommunities          Int     @default(1)
+  maxMembersPerCommunity  Int     @default(3)
+  allowPrivateCommunities Boolean @default(false)
+  allowAnalytics          Boolean @default(false)
+  allowCustomBranding     Boolean @default(false)
+  advancedModeration      Boolean @default(false)
+  isPubliclyListed        Boolean @default(true)
+
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id         String             @id @default(cuid())
+  userId     String             @unique
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId     String
+  plan       Plan               @relation(fields: [planId], references: [id])
+  status     SubscriptionStatus @default(ACTIVE)
+  startedAt  DateTime           @default(now())
+  renewsAt   DateTime?
+  canceledAt DateTime?
+
+  @@index([planId])
+}
+
+// ---------------------------------------------------------------------------
+// Observabilidade e metricas de produto
+// ---------------------------------------------------------------------------
+
+/// Registro append-only de eventos de produto.
+///
+/// Serve para responder as perguntas da secao 54 (ativacao, engajamento,
+/// retencao, social) sem instrumentar cada consulta na mao, e alimenta a North
+/// Star do RetroBook: conversas literarias significativas.
+///
+/// Nunca guarda credencial, token ou conteudo sensivel — apenas o que aconteceu.
+model ProductEvent {
+  id     String  @id @default(cuid())
+  name   String // ex.: "book.added", "post.created", "conversation.meaningful"
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  /// Alvo do evento, quando houver (book, post, community...).
+  entityType String?
+  entityId   String?
+
+  /// Contexto adicional em forma livre — nunca dados pessoais.
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([name, createdAt])
+  @@index([userId, createdAt])
+  @@index([entityType, entityId])
+}
