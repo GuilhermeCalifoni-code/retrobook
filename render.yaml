@@ -17,8 +17,18 @@ services:
     # flag o Blueprint falha no primeiro build, e o erro ("tsc: not found") nao
     # deixa obvio que a causa foi uma variavel de ambiente.
     buildCommand: npm install --include=dev && npm run build --workspace @retrobook/api
-    # `migrate deploy` roda a cada start: e idempotente e garante que o schema
-    # do banco nunca fique atras do codigo que acabou de subir.
+    # A sequencia de boot vive no script `start` do pacote, e nao aqui, de
+    # proposito: assim ela vale mesmo que o Blueprint nao sincronize este
+    # arquivo. Ela faz, em ordem:
+    #
+    #  1. migrate deploy -- idempotente; garante que o schema nunca fique
+    #     atras do codigo que acabou de subir.
+    #  2. seed do catalogo -- tambem idempotente e sem um unico delete. Roda a
+    #     cada boot porque o free tier do Render nao da shell para rodar um
+    #     comando avulso, e sem catalogo (generos, livros, planos) o produto
+    #     nao tem o que mostrar. A falha dele NAO derruba a API: catalogo
+    #     incompleto e ruim, API fora do ar e pior.
+    #  3. o processo.
     startCommand: npm run start --workspace @retrobook/api
     healthCheckPath: /api/health
     envVars:

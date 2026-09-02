@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "build": "prisma generate && tsc -p tsconfig.json",
-    "start": "prisma migrate deploy && node dist/main.js",
+    "start": "prisma migrate deploy && (npm run db:seed:prod || echo '[boot] seed do catalogo falhou; a API sobe assim mesmo') && node dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
