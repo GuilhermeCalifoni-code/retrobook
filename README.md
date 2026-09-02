@@ -194,6 +194,8 @@ A implementação importa aqui: o preview roda o app num `iframe` com a largura 
 
 ## Deploy
 
+O site está no ar em **https://retrobook-alpha.vercel.app**. A API e o banco ainda não foram provisionados — até lá o site carrega e navega, mas cadastro e login falham.
+
 O RetroBook é um monorepo com duas metades que vão para lugares diferentes:
 
 ```text

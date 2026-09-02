@@ -55,7 +55,32 @@ e voce controlar os dois.
 
 ---
 
-## 2. Codigo
+## 2. Estado atual
+
+| Peca | Onde | Estado |
+|---|---|---|
+| Codigo | `GuilhermeCalifoni-code/retrobook` (privado) | no ar |
+| Site | **https://retrobook-alpha.vercel.app** | **publico e funcionando** |
+| API | Render | **nao provisionada** |
+| Banco | Render PostgreSQL | **nao provisionado** |
+
+Enquanto a API nao existir, o site carrega e navega, mas cadastro e login
+falham: nao ha para onde mandar as requisicoes.
+
+### Uma armadilha da Vercel que ja custou tempo aqui
+
+A **Deployment Protection** vem ligada e protege as URLs de deployment
+(`retrobook-<hash>-<time>.vercel.app`), que respondem **302** para
+`vercel.com/sso-api`. O **alias de producao** (`retrobook-alpha.vercel.app`)
+**nao** e afetado e responde 200 publicamente.
+
+Ou seja: ver 302 na URL que a CLI imprime depois do deploy nao significa que
+o site esta inacessivel. Teste sempre o alias de producao antes de concluir
+que a protecao esta bloqueando o publico.
+
+---
+
+## 2b. Codigo
 
 Repositorio: `GuilhermeCalifoni-code/retrobook` (privado).
 
@@ -167,6 +192,10 @@ visiveis para qualquer visitante. **Nunca coloque segredo em variavel
 ---
 
 ## 5. Publicar o site (Vercel)
+
+> Ja feito. O projeto existe como `guilhermecalifoni-codes-projects/retrobook`
+> e o alias de producao e https://retrobook-alpha.vercel.app. As instrucoes
+> abaixo ficam para reconstruir do zero, se um dia precisar.
 
 1. Em vercel.com, **Add New > Project** e importe o repositorio.
 2. **Root Directory: deixe na raiz** (`./`), nao em `apps/web`. O
