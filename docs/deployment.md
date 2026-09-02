@@ -57,26 +57,30 @@ e voce controlar os dois.
 
 ## 2. Estado atual
 
+**O RetroBook esta em producao e funcionando.**
+
 | Peca | Onde | Estado |
 |---|---|---|
-| Codigo | `GuilhermeCalifoni-code/retrobook` (privado) | no ar |
-| Site | **https://retrobook-alpha.vercel.app** | **publico e funcionando** |
-| API | Render | **nao provisionada** |
-| Banco | Render PostgreSQL | **nao provisionado** |
+| Codigo | `GuilhermeCalifoni-code/retrobook` | no ar |
+| Site | https://retrobook-alpha.vercel.app | publico |
+| API | https://retrobook-api.onrender.com | live |
+| Health | https://retrobook-api.onrender.com/api/health | 200 |
+| Banco | PostgreSQL no Render | migrado e com catalogo |
 
-Enquanto a API nao existir, o site carrega e navega, mas cadastro e login
-falham: nao ha para onde mandar as requisicoes.
+O site fala com a API por `VITE_API_URL` (cross-origin), nao por rewrite.
+Por isso a API roda com `COOKIE_SAMESITE=none` e o CORS lista a origem da
+Vercel explicitamente.
 
-### Uma armadilha da Vercel que ja custou tempo aqui
+### Duas armadilhas que ja custaram tempo aqui
 
-A **Deployment Protection** vem ligada e protege as URLs de deployment
-(`retrobook-<hash>-<time>.vercel.app`), que respondem **302** para
-`vercel.com/sso-api`. O **alias de producao** (`retrobook-alpha.vercel.app`)
-**nao** e afetado e responde 200 publicamente.
+**1. A rota de health e `/api/health`, nao `/health`.** Todas as rotas
+montam sob `/api`. `GET /health` responde 404 -- o que parece API quebrada e
+nao e.
 
-Ou seja: ver 302 na URL que a CLI imprime depois do deploy nao significa que
-o site esta inacessivel. Teste sempre o alias de producao antes de concluir
-que a protecao esta bloqueando o publico.
+**2. A Deployment Protection da Vercel** protege as URLs de deployment
+(`retrobook-<hash>-<time>.vercel.app` -> 302 para `vercel.com/sso-api`) mas
+**nao** o alias de producao. Ver 302 na URL que a CLI imprime depois do
+deploy nao significa que o site esta fechado ao publico. Teste o alias.
 
 ---
 
