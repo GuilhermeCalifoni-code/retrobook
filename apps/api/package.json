@@ -18,7 +18,8 @@
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
     "db:seed:prod": "tsx prisma/seed.production.ts",
-    "smoke:prod": "tsx scripts/smoke-production.ts"
+    "smoke:prod": "tsx scripts/smoke-production.ts",
+    "e2e:notifications": "tsx scripts/e2e-notifications.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
