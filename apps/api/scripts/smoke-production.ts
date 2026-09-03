@@ -284,6 +284,60 @@ async function main() {
   const authorView = await alice.call('GET', `/posts/${spoilerId}`);
   check('autor nunca ve o proprio spoiler coberto', authorView.data?.post?.viewerSpoiler?.hidden === false);
 
+  // -- 9b. Spoiler DENTRO da conversa --------------------------------------
+  // O comentario nao tem alcance proprio: herda o da discussao. Ate o ciclo 4
+  // o veu do comentario era um booleano fixo, e ficava coberto para sempre --
+  // inclusive para quem ja tinha passado do capitulo e para o proprio autor.
+  const SECRET_REPLY = 'No capitulo 22 a coisa vira completamente.';
+  const spoilerReply = await alice.call('POST', `/posts/${spoilerId}/comments`, {
+    content: SECRET_REPLY,
+    containsSpoiler: true,
+  });
+  check('publica comentario com spoiler', spoilerReply.status === 201 || spoilerReply.status === 200);
+
+  await bob.call('PATCH', `/library/books/${book.id}`, { currentChapter: 3 });
+  const threadBehind = await bob.call('GET', `/posts/${spoilerId}/comments`);
+  const behindItems = threadBehind.data?.items ?? [];
+  const behindSpoiler = behindItems.find((c: any) => c.containsSpoiler);
+  check(
+    'comentario com spoiler fica coberto para leitor atrasado',
+    behindSpoiler?.viewerSpoiler?.hidden === true,
+    JSON.stringify(behindSpoiler?.viewerSpoiler),
+  );
+
+  await bob.call('PATCH', `/library/books/${book.id}`, { currentChapter: 30 });
+  const threadAhead = await bob.call('GET', `/posts/${spoilerId}/comments`);
+  const aheadSpoiler = (threadAhead.data?.items ?? []).find((c: any) => c.containsSpoiler);
+  check(
+    'comentario com spoiler libera quando o leitor avanca',
+    aheadSpoiler?.viewerSpoiler?.hidden === false,
+    JSON.stringify(aheadSpoiler?.viewerSpoiler),
+  );
+
+  const threadAuthor = await alice.call('GET', `/posts/${spoilerId}/comments`);
+  const ownSpoiler = (threadAuthor.data?.items ?? []).find((c: any) => c.containsSpoiler);
+  check('autor nunca ve o proprio comentario coberto', ownSpoiler?.viewerSpoiler?.hidden === false);
+
+  // -- 9c. Conversa: participantes e resposta aninhada ----------------------
+  const detail = await alice.call('GET', `/posts/${postId}`);
+  check(
+    'discussao informa quantas pessoas participam',
+    typeof detail.data?.participantsCount === 'number' && detail.data.participantsCount >= 2,
+    `participantsCount ${detail.data?.participantsCount}`,
+  );
+
+  const rootComments = await alice.call('GET', `/posts/${postId}/comments`);
+  const firstComment = (rootComments.data?.items ?? [])[0];
+  const nested = await alice.call('POST', `/posts/${postId}/comments`, {
+    content: 'Respondendo a resposta, para validar o aninhamento.',
+    parentId: firstComment?.id,
+  });
+  check('responde a uma resposta', nested.status === 201 || nested.status === 200, `status ${nested.status}`);
+
+  const tree = await alice.call('GET', `/posts/${postId}/comments`);
+  const parent = (tree.data?.items ?? []).find((c: any) => c.id === firstComment?.id);
+  check('resposta aninhada aparece dentro do pai', (parent?.replies?.length ?? 0) >= 1);
+
   // O texto continua no payload de proposito: "Mostrar mesmo assim" e uma
   // escolha do leitor, feita sem ida ao servidor. O veu e cortesia, nao
   // controle de acesso -- quem contorna so estraga a propria leitura. O que

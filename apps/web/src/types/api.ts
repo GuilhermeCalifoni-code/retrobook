@@ -251,6 +251,8 @@ export interface Comment {
   parentId: string | null;
   content: string;
   containsSpoiler: boolean;
+  /** Decidido no servidor, comparando o alcance da discussao com seu progresso. */
+  viewerSpoiler: { hidden: boolean; label: string | null; explanation: string | null };
   isRemoved: boolean;
   likesCount: number;
   createdAt: string;

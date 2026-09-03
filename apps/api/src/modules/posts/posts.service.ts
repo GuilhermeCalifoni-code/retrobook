@@ -1,4 +1,4 @@
-import { MembershipStatus, PostType, ReactionType, type Prisma } from '@prisma/client';
+import { MembershipStatus, PostType, ReactionType, SpoilerPreference, type Prisma } from '@prisma/client';
 import { ApiError } from '../../common/api-error';
 import { buildCursorPage } from '../../common/http';
 import { assertQuoteWithinPolicy, excerpt, extractTags, stripHtml } from '../../common/text';
@@ -6,7 +6,7 @@ import { prisma } from '../../database/prisma';
 import { postCardSelect, publicUserSelect, serializePost, serializeUser } from '../../shared/selectors';
 import { createNotification, createNotificationsBulk } from '../notifications/notifications.service';
 import { canModerate, canPost, canViewContent, getMembership } from '../communities/communities.permissions';
-import { buildScope, loadReaderProgress, resolveSpoiler } from './spoiler.service';
+import { buildScope, loadReaderProgress, resolveSpoiler, type ViewerSpoilerState } from './spoiler.service';
 import { PRODUCT_EVENTS, evaluateMeaningfulConversation, track } from '../analytics/events.service';
 
 export interface CreatePostInput {
@@ -336,7 +336,19 @@ export async function getPostDetail(postId: string, viewerId?: string) {
 
   const [decorated] = await decorateForViewer([post], viewerId);
   const comments = await listComments(postId, viewerId);
-  return { post: decorated!, comments };
+
+  // Quantas pessoas estao na conversa, nao quantas mensagens existem. Sai dos
+  // comentarios que ja estao em memoria -- nenhuma consulta a mais.
+  const voices = new Set<string>([post.author.id]);
+  const walk = (list: { author: { id: string }; replies: unknown[] }[]) => {
+    for (const c of list) {
+      voices.add(c.author.id);
+      walk(c.replies as typeof list);
+    }
+  };
+  walk(comments as never);
+
+  return { post: decorated!, comments, participantsCount: voices.size };
 }
 
 export async function togglePostReaction(postId: string, userId: string, type: ReactionType = ReactionType.LIKE) {
@@ -410,27 +422,79 @@ export async function listSavedPosts(userId: string, take = 20) {
 
 // -- Comentarios -------------------------------------------------------------
 
+/**
+ * Comentarios de uma discussao, com o spoiler ja resolvido para quem le.
+ *
+ * Ate aqui o comentario devolvia apenas o booleano `containsSpoiler`, e a
+ * interface cobria o texto para todo mundo, para sempre -- inclusive para quem
+ * ja terminou o livro e para o proprio autor do comentario. Ou seja: a
+ * caracteristica que diferencia o RetroBook valia para o post e nao valia para
+ * a conversa embaixo dele.
+ *
+ * O comentario nao tem alcance proprio no banco: ele herda o alcance da
+ * discussao. Isso e o que faz sentido -- um spoiler dito dentro de uma
+ * conversa "ate o capitulo 12" e um spoiler ate o capitulo 12. Quando a
+ * discussao nao declara alcance, cai no comportamento seguro de antes.
+ */
 export async function listComments(postId: string, viewerId?: string) {
-  const comments = await prisma.comment.findMany({
-    where: { postId },
-    include: { author: { select: publicUserSelect } },
-    orderBy: { createdAt: 'asc' },
-    take: 200,
-  });
+  const [post, comments] = await Promise.all([
+    prisma.post.findUnique({
+      where: { id: postId },
+      select: {
+        bookId: true,
+        spoilerScope: true,
+        spoilerScopeType: true,
+        spoilerScopeValue: true,
+      },
+    }),
+    prisma.comment.findMany({
+      where: { postId },
+      include: { author: { select: publicUserSelect } },
+      orderBy: { createdAt: 'asc' },
+      take: 200,
+    }),
+  ]);
 
-  const liked = viewerId
-    ? await prisma.reaction.findMany({
-        where: { userId: viewerId, commentId: { in: comments.map((c) => c.id) } },
-        select: { commentId: true },
-      })
-    : [];
+  const [liked, profile, progressByBook] = await Promise.all([
+    viewerId
+      ? prisma.reaction.findMany({
+          where: { userId: viewerId, commentId: { in: comments.map((c) => c.id) } },
+          select: { commentId: true },
+        })
+      : Promise.resolve([]),
+    viewerId
+      ? prisma.profile.findUnique({ where: { userId: viewerId }, select: { spoilerPreference: true } })
+      : Promise.resolve(null),
+    loadReaderProgress(viewerId, [post?.bookId]),
+  ]);
+
   const likedSet = new Set(liked.map((l) => l.commentId!));
+  const preference = profile?.spoilerPreference ?? SpoilerPreference.HIDE_UNREAD;
+  const progress = post?.bookId ? progressByBook.get(post.bookId) ?? null : null;
+
+  function spoilerFor(comment: { containsSpoiler: boolean; authorId: string }): ViewerSpoilerState {
+    if (!comment.containsSpoiler) return { hidden: false, label: null, explanation: null };
+    // Ninguem leva spoiler do que escreveu.
+    if (viewerId && comment.authorId === viewerId) {
+      return { hidden: false, label: post?.spoilerScope ?? null, explanation: null };
+    }
+    return resolveSpoiler(
+      {
+        containsSpoiler: true,
+        spoilerScopeType: post?.spoilerScopeType ?? null,
+        spoilerScopeValue: post?.spoilerScopeValue ?? null,
+      },
+      preference,
+      progress,
+    );
+  }
 
   const serialized = comments.map((c) => ({
     id: c.id,
     parentId: c.parentId,
     content: c.isRemoved ? 'Comentario removido pela moderacao.' : c.content,
     containsSpoiler: c.containsSpoiler,
+    viewerSpoiler: c.isRemoved ? { hidden: false, label: null, explanation: null } : spoilerFor(c),
     isRemoved: c.isRemoved,
     likesCount: c.likesCount,
     createdAt: c.createdAt,
@@ -537,6 +601,8 @@ export async function createComment(
     parentId: comment.parentId,
     content: comment.content,
     containsSpoiler: comment.containsSpoiler,
+    // Quem acabou de escrever nunca ve o proprio texto coberto.
+    viewerSpoiler: { hidden: false, label: null, explanation: null },
     isRemoved: false,
     likesCount: 0,
     createdAt: comment.createdAt,

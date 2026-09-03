@@ -17,7 +17,7 @@ export function useFeed(scope: FeedScope = 'all') {
 export function usePost(id: string) {
   return useQuery({
     queryKey: queryKeys.post(id),
-    queryFn: () => api.get<{ post: Post; comments: Comment[] }>(`/posts/${id}`),
+    queryFn: () => api.get<{ post: Post; comments: Comment[]; participantsCount: number }>(`/posts/${id}`),
     enabled: Boolean(id),
   });
 }
